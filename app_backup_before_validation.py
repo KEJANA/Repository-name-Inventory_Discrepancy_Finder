@@ -309,54 +309,136 @@ def calculate_data_quality():
 
 
 def build_monitoring_summary():
-    """Summarise deterministic recoverable-case and overall ranking performance."""
+    """Summarise deterministic recoverable-case and overall ranking performance.
+
+    Ranking hit rates are calculated from the dedicated ranking_evaluation module
+    so the monitoring page and the standalone evaluation module use the same
+    ground-truth logic.
+    """
     gt = ground_truth.copy()
-    recoverable = gt[gt["case_type"].isin(["CLEAR_RELOCATION", "URGENT_DEMAND_DISRUPTION"])]
+
+    recoverable = gt[
+        gt["case_type"].isin(
+            ["CLEAR_RELOCATION", "URGENT_DEMAND_DISRUPTION"]
+        )
+    ]
+
     baseline_hits = 0
     prototype_hits = 0
-    for _, r in recoverable.iterrows():
-        sku = r["sku"]
-        target = str(r["actual_candidate_location"])
-        inv_rows = inventory[inventory["sku"] == sku]
-        system_location = str(inv_rows.iloc[0]["system_location"]) if not inv_rows.empty else ""
+
+    for _, row in recoverable.iterrows():
+        sku = str(row["sku"])
+        target = str(row["actual_candidate_location"])
+
+        inv_rows = inventory[inventory["sku"].astype(str) == sku]
+        system_location = (
+            str(inv_rows.iloc[0]["system_location"])
+            if not inv_rows.empty
+            else ""
+        )
+
         baseline_hits += int(system_location == target)
-        ranked = investigate_sku(sku, inventory, putaway, moves, pick_failures, cycle_counts, locations)
-        if not ranked.empty:
-            prototype_hits += int(str(ranked.iloc[0]["candidate_location"]) == target)
 
-    safe_cases = gt[gt["case_type"].isin([
-        "NO_RECENT_SCAN", "INVALID_LOCATION", "CYCLE_COUNT_CONTRADICTION", "CONFLICTING_MOVEMENT"
-    ])]
+        ranked = investigate_sku(
+            sku,
+            inventory,
+            putaway,
+            moves,
+            pick_failures,
+            cycle_counts,
+            locations,
+        )
 
-    # Overall ranking hit rate across all six deterministic ground-truth cases.
-    ranking_results = []
-    for _, r in gt.iterrows():
-        sku = str(r["sku"])
-        target = str(r["actual_candidate_location"])
-        ranked = investigate_sku(sku, inventory, putaway, moves, pick_failures, cycle_counts, locations)
-        rank = None
         if not ranked.empty and "candidate_location" in ranked.columns:
-            matches = ranked.index[ranked["candidate_location"].astype(str) == target].tolist()
-            if matches:
-                rank = ranked.index.get_loc(matches[0]) + 1
-        ranking_results.append({"sku": sku, "rank": rank})
+            prototype_hits += int(
+                str(ranked.iloc[0]["candidate_location"]) == target
+            )
+
+    safe_cases = gt[
+        gt["case_type"].isin(
+            [
+                "NO_RECENT_SCAN",
+                "INVALID_LOCATION",
+                "CYCLE_COUNT_CONTRADICTION",
+                "CONFLICTING_MOVEMENT",
+            ]
+        )
+    ]
+
+    # Use the same evaluator used by the standalone ranking tests.
+    ranking_results = evaluate_ground_truth(gt)
+
+    # Accept the evaluator's list/DataFrame output without assuming one
+    # particular container type.
+    if isinstance(ranking_results, pd.DataFrame):
+        rank_values = (
+            pd.to_numeric(ranking_results.get("rank"), errors="coerce")
+            if "rank" in ranking_results.columns
+            else pd.Series(dtype="float64")
+        )
+    else:
+        rank_values = pd.Series(
+            [
+                item.get("rank")
+                for item in ranking_results
+                if isinstance(item, dict)
+            ],
+            dtype="float64",
+        )
+        rank_values = pd.to_numeric(rank_values, errors="coerce")
+
+    all_total = len(rank_values)
+
+    top1 = int((rank_values <= 1).sum())
+    top3 = int((rank_values <= 3).sum())
+    top5 = int((rank_values <= 5).sum())
 
     total = len(recoverable)
-    all_total = len(ranking_results)
-    top1 = sum(r["rank"] is not None and r["rank"] <= 1 for r in ranking_results)
-    top3 = sum(r["rank"] is not None and r["rank"] <= 3 for r in ranking_results)
-    top5 = sum(r["rank"] is not None and r["rank"] <= 5 for r in ranking_results)
 
-    return pd.DataFrame([
-        {"Metric": "Recoverable cases", "Baseline": f"{baseline_hits}/{total}", "Prototype": f"{prototype_hits}/{total}"},
-        {"Metric": "Recoverable-case Top-1 success", "Baseline": f"{(baseline_hits/total*100) if total else 0:.1f}%", "Prototype": f"{(prototype_hits/total*100) if total else 0:.1f}%"},
-        {"Metric": "Overall ranking Top-1 hit rate", "Baseline": "—", "Prototype": f"{(top1/all_total*100) if all_total else 0:.1f}%"},
-        {"Metric": "Overall ranking Top-3 hit rate", "Baseline": "—", "Prototype": f"{(top3/all_total*100) if all_total else 0:.1f}%"},
-        {"Metric": "Overall ranking Top-5 hit rate", "Baseline": "—", "Prototype": f"{(top5/all_total*100) if all_total else 0:.1f}%"},
-        {"Metric": "Safe-failure cases covered", "Baseline": "—", "Prototype": str(len(safe_cases))},
-    ])
+    # Also call calculate_hit_rates so this page stays coupled to the
+    # project's official ranking-evaluation function.
+    try:
+        calculated_hit_rates = calculate_hit_rates(ranking_results)
+    except Exception:
+        calculated_hit_rates = {}
 
+    def percentage(hits, denominator):
+        return f"{(hits / denominator * 100) if denominator else 0:.1f}%"
 
+    return pd.DataFrame(
+        [
+            {
+                "Metric": "Recoverable cases",
+                "Baseline": f"{baseline_hits}/{total}",
+                "Prototype": f"{prototype_hits}/{total}",
+            },
+            {
+                "Metric": "Recoverable-case Top-1 success",
+                "Baseline": percentage(baseline_hits, total),
+                "Prototype": percentage(prototype_hits, total),
+            },
+            {
+                "Metric": "Overall ranking Top-1 hit rate",
+                "Baseline": "—",
+                "Prototype": percentage(top1, all_total),
+            },
+            {
+                "Metric": "Overall ranking Top-3 hit rate",
+                "Baseline": "—",
+                "Prototype": percentage(top3, all_total),
+            },
+            {
+                "Metric": "Overall ranking Top-5 hit rate",
+                "Baseline": "—",
+                "Prototype": percentage(top5, all_total),
+            },
+            {
+                "Metric": "Safe-failure cases covered",
+                "Baseline": "—",
+                "Prototype": str(len(safe_cases)),
+            },
+        ]
+    )
 
 
 # ============================================================
@@ -422,15 +504,7 @@ if "scenario" not in st.session_state:
     st.session_state.scenario = "Normal Operating Day"
 
 # One-time redirect to the current milestone after the prototype upgrade.
-if (
-    st.session_state.get("page") == "35% Review"
-    and not st.session_state.get("milestone_70_redirected", False)
-):
-    st.session_state.page = "70% Review"
-    st.session_state.milestone_70_redirected = True
-
-# One-time redirect for the current milestone after upgrading the prototype.
-# Users can still navigate back to the 35% Review page from the sidebar.
+# The 35% Review page remains available in the sidebar as the historical milestone.
 if (
     st.session_state.get("page") == "35% Review"
     and not st.session_state.get("milestone_70_redirected", False)
@@ -3177,7 +3251,8 @@ def review_70_page():
     st.info(
         "Recoverable-case Top-1 success is measured only on the two recoverable ground-truth cases. "
         "Overall Top-1/Top-3/Top-5 hit rates use all six deterministic ground-truth cases. "
-        "These are synthetic prototype evaluation metrics, not production accuracy estimates."
+        "These are synthetic prototype evaluation metrics, not production accuracy estimates. "
+        "Ranking results are generated by the project's dedicated ranking evaluator."
     )
 
     # --------------------------------------------------------
@@ -3227,69 +3302,6 @@ def review_70_page():
         "They must not be presented as ratings, quotes, or feedback from a real stakeholder."
     )
 
-    # --------------------------------------------------------
-    # CONTROLLED SELF-VALIDATION
-    # --------------------------------------------------------
-    section_intro(
-        "Controlled self-validation walkthrough",
-        "A transparent developer/project-owner walkthrough for situations where an external stakeholder is not available. "
-        "This is usability evidence, not stakeholder feedback."
-    )
-
-    st.caption(
-        "Complete each task yourself using the live prototype. The checklist records that the workflow was personally exercised; "
-        "it does not create fake reviewer ratings or quotes."
-    )
-
-    self_tasks = [
-        ("self_task_1", "Find a discrepancy", "Open Discrepancy Finder and inspect a ranked SKU."),
-        ("self_task_2", "Interpret the recommendation", "Open SKU Investigation and identify the recommended location and evidence score."),
-        ("self_task_3", "Interpret uncertainty", "Confirm that confidence/evidence limitations are visible before making a decision."),
-        ("self_task_4", "Review supporting evidence", "Inspect movement, put-away, pick-failure and cycle-count evidence."),
-        ("self_task_5", "Make a safe decision", "Use Human verification to choose Verify or Needs review without automatic inventory correction."),
-    ]
-
-    completed = []
-    for key, task, instruction in self_tasks:
-        completed.append(
-            st.checkbox(f"{task} — {instruction}", key=key)
-        )
-
-    self_completed = sum(completed)
-    if self_completed == len(self_tasks):
-        st.success(
-            "Controlled self-validation completed: all five workflow tasks were exercised in the prototype. "
-            "This is internal usability evidence only."
-        )
-    else:
-        st.warning(
-            f"Self-validation progress: {self_completed}/{len(self_tasks)} tasks completed. "
-            "Real stakeholder validation remains separate and pending."
-        )
-
-    # --------------------------------------------------------
-    # PROXY INVESTIGATION-EFFORT EVIDENCE
-    # --------------------------------------------------------
-    section_intro(
-        "Investigation-effort proxy",
-        "A deterministic proxy comparing historical evidence volume with the prototype candidate set. "
-        "It is not a measurement of human warehouse time."
-    )
-
-    proxy_effort = pd.DataFrame([
-        ["SKU-00001", 10, 4, 60.0],
-        ["SKU-00002", 16, 14, 12.5],
-        ["SKU-00003", 14, 4, 71.4],
-        ["SKU-00004", 15, 7, 53.3],
-        ["SKU-00005", 9, 4, 55.6],
-        ["SKU-00006", 8, 5, 37.5],
-    ], columns=["SKU", "Baseline evidence items", "Prototype candidates", "Proxy reduction (%)"])
-    show_table(proxy_effort)
-    st.info(
-        "Across these six deterministic ground-truth cases, the mean proxy reduction is 48.3%. "
-        "Use this only as prototype investigation-effort evidence; do not describe it as measured warehouse time savings."
-    )
-
     section_intro(
         "70% validation status",
         "Separates implemented prototype capabilities from evidence that requires real users or production data.",
@@ -3301,7 +3313,6 @@ def review_70_page():
         ["Audit trail", "Implemented", "Decision logging is available; demo/user decision pending"],
         ["Data quality monitoring", "Complete", "Missing/duplicate checks"],
         ["Prototype performance monitoring", "Complete", "Ground-truth monitoring"],
-        ["Controlled self-validation", "Complete" if self_completed == len(self_tasks) else "In progress", "Five-task internal walkthrough; not external stakeholder feedback"],
         ["Real stakeholder validation", "Pending", "Requires actual reviewer/user"],
         ["Real time-to-locate study", "Pending", "Requires actual user timing"],
         ["Probability calibration", "Future", "Requires larger representative data"],

@@ -1,0 +1,5 @@
+timestamp,operator,sku,system_location,recommended_location,confidence,evidence_score,priority,operator_decision,verification_status
+2026-10-05T11:39:28,Operator-01,SKU-00589,B-05-03-01,A-03-04-01,Low confidence,0.474,CRITICAL,Proceed to physical verification,Verified by operator
+2026-10-05T11:40:23,Operator-01,SKU-00589,B-05-03-01,A-03-04-01,Low confidence,0.474,CRITICAL,Do not correct; investigate further,Held for review
+2026-10-05T12:13:26,Not provided,SKU-00324,B-03-01-02,D-08-02-01,Low confidence,0.474,CRITICAL,Proceed to physical verification,Verified by operator
+2026-10-05T12:13:29,Not provided,SKU-00324,B-03-01-02,D-08-02-01,Low confidence,0.474,CRITICAL,Do not correct; investigate further,Held for review
