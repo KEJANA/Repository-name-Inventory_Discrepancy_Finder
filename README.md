@@ -93,24 +93,34 @@ Inventory_Discrepancy_Finder/
     ├── test_ranking_evaluation.py
     ├── test_stakeholder_validation.py
     └── test_stream_loader.py
-Evaluation Results
-The prototype includes six deterministic ground-truth scenarios.
-Ranking Evaluation
-Metric	Result
-Recoverable cases	2/2
-Recoverable Top-1 – Baseline	0/2 (0%)
-Recoverable Top-1 – Prototype	2/2 (100%)
-Overall Top-1	33.3%
-Overall Top-3	100%
-Overall Top-5	100%
-Safe-failure cases	4/4
+```
 
+## Evaluation Results
+
+The prototype includes six deterministic ground-truth scenarios.
+
+### Ranking Evaluation
+
+| Metric | Result |
+|---|---:|
+| Recoverable cases | 2/2 |
+| Recoverable Top-1 – Baseline | 0/2 (0%) |
+| Recoverable Top-1 – Prototype | 2/2 (100%) |
+| Overall Top-1 | 33.3% |
+| Overall Top-3 | 100% |
+| Overall Top-5 | 100% |
+| Safe-failure cases | 4/4 |
 
 The recoverable Top-1 comparison evaluates the two scenarios where a correct location can be recovered from the available evidence.
+
 The remaining scenarios evaluate safe handling of uncertainty, missing evidence, invalid locations and contradictory evidence.
+
 The evidence score is used as a ranking strength and is not presented as a calibrated probability.
-Automated Testing
+
+## Automated Testing
+
 The project includes an automated pytest suite covering:
+
 - Discrepancy engine behaviour
 - Baseline comparison
 - Edge and failure cases
@@ -118,37 +128,62 @@ The project includes an automated pytest suite covering:
 - Ranking evaluation
 - Stakeholder-validation workflow
 - Streaming event-feed validation
-Current test result:
-35/35 tests passed
-Streaming Event-Feed Validation
+
+### Current Test Result
+
+**35/35 tests passed**
+
+## Streaming Event-Feed Validation
+
 The prototype includes a lightweight streaming-data loader that validates incoming CSV event feeds.
+
 Supported event feeds include:
+
 - Put-away events
 - Move events
 - Pick failures
 - Cycle counts
+
 The loader validates required columns, timestamps and file availability before events are used by the prototype.
+
 This simulates integration with incoming WMS/API event data without claiming a live production WMS connection.
-Human Verification and Audit Trail
+
+## Human Verification and Audit Trail
+
 The prototype uses a human-in-the-loop approach.
+
 Operators can review the recommended location, evidence and uncertainty before deciding whether to proceed with physical verification or investigate further.
+
 Investigation decisions are recorded in an audit trail for traceability.
-Investigation Effort
+
+## Investigation Effort
+
 A prototype investigation-effort proxy is included to compare the amount of historical evidence that would need to be reviewed against the ranked candidate set produced by the prototype.
+
 This is a prototype measurement and should not be interpreted as a real warehouse time-to-locate study.
+
 A real user-timing study is planned for a later stage.
-Data Quality Monitoring
+
+## Data Quality Monitoring
+
 The 70% prototype includes monitoring across the operational datasets to check:
+
 - Dataset availability
 - Row counts
 - Required columns
 - Timestamp validity
 - Data completeness
-Safety Approach
+
+## Safety Approach
+
 The system is designed to avoid false certainty.
+
 When evidence is weak or contradictory, the system reports lower confidence and recommends verification rather than automatically changing inventory records.
+
 Human verification is required before inventory correction.
-Technology
+
+## Technology
+
 - Python
 - Pandas
 - NumPy
@@ -158,26 +193,49 @@ Technology
 - Pytest
 - Synthetic fulfilment-centre operational data
 - Evidence-based candidate ranking
-How to Run
-Install the dependencies:
+
+## How to Run
+
+### 1. Install Dependencies
+
+```bash
 pip install -r requirements.txt
+```
+
+### 2. Generate the Dataset
 
 Generate the dataset if required:
+
+```bash
 python3 generate_data.py
+```
 
-Run the Streamlit application:
+### 3. Run the Streamlit Application
+
+```bash
 streamlit run app.py
+```
 
-Run the automated tests:
+### 4. Run Automated Tests
+
+```bash
 pytest -q
+```
 
-Responsible AI
+## Responsible AI
+
 The prototype communicates uncertainty through confidence levels and keeps humans involved in inventory correction decisions.
+
 Synthetic data is used during development and evaluation. Before production deployment, the system should be validated against real operational data and monitored for incorrect recommendations.
+
 The evidence score is a ranking signal rather than a calibrated probability.
-Project Status
-70% Implementation Milestone – Completed
+
+## Project Status
+
+### 70% Implementation Milestone – Completed
+
 The current prototype includes:
+
 - End-to-end working Streamlit application
 - Multi-signal discrepancy engine
 - Evidence-based candidate ranking
@@ -192,11 +250,15 @@ The current prototype includes:
 - Audit trail
 - Investigation-effort proxy
 - Controlled self-validation
-Beyond 70%
+
+### Beyond 70%
+
 The following are intentionally left for later stages:
+
 - External stakeholder/user validation
 - Real warehouse time-to-locate study
 - Probability calibration
 - Live WMS/API integration
 - Production deployment
+
 These items are not claimed as completed in the current 70% milestone.
